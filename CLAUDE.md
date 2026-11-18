@@ -11,15 +11,15 @@ This repo sorts a camera roll into folders, finds duplicates, and shows it all o
 
 ## When someone gives you this repo's link (the usual case)
 
-They pasted something like "set up https://github.com/kairothq/claude-photo-sorter". Do this without asking:
+They pasted something like "set up https://github.com/dch2238/ai-photo-sorter". Do this without asking:
 
-1. **Download it.** If you're not already inside this repo: `git clone https://github.com/kairothq/claude-photo-sorter.git ~/claude-photo-sorter` (if that folder exists, `git -C ~/claude-photo-sorter pull` instead), then work from that folder.
+1. **Download it.** If you're not already inside this repo: `git clone https://github.com/dch2238/ai-photo-sorter.git ~/ai-photo-sorter` (if that folder exists, `git -C ~/ai-photo-sorter pull` instead), then work from that folder.
 2. **Set up.** Run `./setup.sh`. If Python is missing, ask them to run `xcode-select --install` and wait. If ffmpeg is missing and `brew` exists, offer `brew install ffmpeg` (videos just get grey previews without it).
 3. **Open the dashboard.** Run `./start.sh` in the background (it keeps running and opens the browser at http://127.0.0.1:8765).
 4. **Tell them, in about three lines:**
    - The dashboard is open in their browser.
    - Click **Choose folder** and pick their photos (a Google Takeout or Apple Photos export, or any folder), then pick where the sorted copies go, then **Start sorting**.
-   - It runs by itself and shows progress. Folders can be changed under **Advanced**. To open it again later: double-click `Open Photo Sorter.command` in `~/claude-photo-sorter`, or ask you to "open my photo sorter".
+   - It runs by itself and shows progress. Folders can be changed under **Advanced**. To open it again later: double-click `Open Photo Sorter.command` in `~/ai-photo-sorter`, or ask you to "open my photo sorter".
 5. Stay available. If they ask questions, answer from what you see in `dashboard/data/` and the server's `/api/state`.
 
 If they don't have an export yet, explain:
