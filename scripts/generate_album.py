@@ -1,6 +1,8 @@
 """Generate a self-contained offline HTML album viewer (`album.html`) inside the sorted media folder.
 Features:
 - Instant 1-click Delete directly to macOS/Windows Trash (zero 'marked for deletion' clutter).
+- 'People & Family' Face Explorer: Shows real face avatars of detected recurring people.
+  Clicking any face filters the photos to only those featuring that specific person!
 - Video player, Lightbox zoom, 60 FPS lazy grid, relative paths for 100% portability.
 """
 import glob, json, os, re, shutil, sys
@@ -28,6 +30,9 @@ def generate_album(dest_dir):
     os.makedirs(thumbs_dest, exist_ok=True)
     
     # Check for people clusters
+    clusters_path = os.path.join(thumbs_dest, "people_clusters.json")
+    people_clusters = load(clusters_path, [])
+    print(f"Loaded {len(people_clusters)} people clusters.")
 
     # Build item manifest with relative paths
     items = []
@@ -121,8 +126,164 @@ main {{ flex: 1; display: flex; flex-direction: column; height: 100vh; overflow:
 .filter-pill:hover {{ color: var(--text); }}
 .filter-pill.active {{ background: var(--primary); color: #000; font-weight: 600; border-color: var(--primary); }}
 
+/* Faces Row */
+.faces-container {{
+  background: #11161d; border-bottom: 1px solid var(--border); padding: 12px 20px; display: none;
+  flex-direction: column; gap: 8px;
+}}
+.faces-container.visible {{ display: flex; }}
+.faces-header {{ font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }}
+.faces-row {{
+  display: flex; gap: 14px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;
+}}
+.face-card {{
+  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; flex-shrink: 0;
+}}
+.face-avatar {{
+  width: 58px; height: 58px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border);
+  transition: transform 0.15s, border-color 0.15s;
+}}
+.face-card:hover .face-avatar {{ transform: scale(1.08); border-color: var(--primary); }}
+.face-card.active .face-avatar {{ border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary); }}
+.face-name {{ font-size: 0.75rem; color: var(--text-bright); max-width: 65px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }}
+.face-count {{ font-size: 0.68rem; color: var(--text-muted); }}
+
+/* Gallery Grid */
+.gallery-scroll {{ flex: 1; overflow-y: auto; padding: 20px; }}
+.gallery-grid {{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px;
+}}
+.card {{
+  position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; cursor: pointer; aspect-ratio: 1; transition: transform 0.15s, border-color 0.15s, opacity 0.2s;
+}}
+.card:hover {{ transform: translateY(-2px); border-color: var(--primary); }}
+.card.deleting {{ transform: scale(0.85); opacity: 0; pointer-events: none; }}
+.card img {{ width: 100%; height: 100%; object-fit: cover; display: block; }}
+.card-badge {{
+  position: absolute; bottom: 6px; left: 6px; background: rgba(0, 0, 0, 0.75); color: #fff;
+  font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; pointer-events: none;
+}}
+.video-pill {{
+  position: absolute; top: 6px; right: 6px; background: rgba(0, 0, 0, 0.8); color: #58a6ff;
+  font-size: 0.75rem; padding: 3px 6px; border-radius: 4px; font-weight: 700;
+}}
+.card-del-btn {{
+  position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.7); border: none; color: #ff7b72;
+  width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s; font-size: 0.85rem;
+}}
+.card:hover .card-del-btn {{ opacity: 1; }}
+.card-del-btn:hover {{ background: var(--danger); color: #fff; }}
+
+/* Lightbox Modal */
+.lightbox {{
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.95); z-index: 1000; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+}}
+.lightbox.open {{ display: flex; }}
+.lb-topbar {{
+  position: absolute; top: 0; left: 0; right: 0; height: 56px; padding: 0 20px; display: flex;
+  align-items: center; justify-content: space-between; z-index: 1010; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+}}
+.lb-info {{ font-size: 0.9rem; color: #c9d1d9; }}
+.lb-actions {{ display: flex; align-items: center; gap: 12px; }}
+.lb-btn {{
+  background: rgba(255, 255, 255, 0.15); border: none; color: #fff; padding: 6px 14px; border-radius: 6px;
+  cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: background 0.15s;
+}}
+.lb-btn:hover {{ background: rgba(255, 255, 255, 0.25); }}
+.lb-btn.danger {{ background: var(--danger); color: #fff; font-weight: 600; }}
+.lb-btn.danger:hover {{ opacity: 0.9; }}
+.lb-content {{
+  max-width: 90vw; max-height: 80vh; display: flex; align-items: center; justify-content: center;
+}}
+.lb-content img {{ max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 4px; }}
+.lb-content video {{ max-width: 90vw; max-height: 80vh; border-radius: 4px; outline: none; }}
+.lb-nav {{
+  position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255, 255, 255, 0.1);
+  border: none; color: #fff; width: 48px; height: 64px; border-radius: 6px; cursor: pointer; font-size: 1.5rem;
+  display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+}}
+.lb-nav:hover {{ background: rgba(255, 255, 255, 0.25); }}
+.lb-nav.prev {{ left: 20px; }}
+.lb-nav.next {{ right: 20px; }}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="sidebar-header">
+    <h1><span>📁</span> Media Album</h1>
+  </div>
+  <ul class="category-list" id="catList">
+    <!-- Populated by JS -->
+  </ul>
+</aside>
+
+<main>
+  <div class="topbar">
+    <div class="top-title" id="currentTitle">
+      <span>🖼️</span> All Media
+    </div>
+    <div class="top-actions">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search filenames..." oninput="handleSearch()">
+      <div style="display: flex; gap: 6px;">
+        <button class="filter-pill active" id="filterAll" onclick="setFilter('all')">All</button>
+        <button class="filter-pill" id="filterPhotos" onclick="setFilter('photo')">📷 Photos</button>
+        <button class="filter-pill" id="filterVideos" onclick="setFilter('video')">🎬 Videos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- People & Family Face Avatar Row -->
+  <div class="faces-container" id="facesContainer">
+    <div class="faces-header">
+      <span>👥 People in this Album</span>
+      <span id="facesActiveNotice" style="color:var(--primary);cursor:pointer;" onclick="clearPersonFilter()">Show Everyone</span>
+    </div>
+    <div class="faces-row" id="facesRow">
+      <!-- Person avatar cards populated here -->
+    </div>
+  </div>
+
+  <div class="gallery-scroll">
+    <div class="gallery-grid" id="galleryGrid">
+      <!-- Cards rendered here -->
+    </div>
+  </div>
+</main>
+
+<!-- Lightbox Modal -->
+<div class="lightbox" id="lightbox">
+  <div class="lb-topbar">
+    <div class="lb-info" id="lbInfo">IMG_001.JPG</div>
+    <div class="lb-actions">
+      <button class="lb-btn danger" onclick="deleteCurrentLightboxItem()">🗑️ Delete (Del)</button>
+      <button class="lb-btn" onclick="closeLightbox()">✕ Close (Esc)</button>
+    </div>
+  </div>
+  <button class="lb-nav prev" onclick="prevLightbox()">‹</button>
+  <div class="lb-content" id="lbContent"></div>
+  <button class="lb-nav next" onclick="nextLightbox()">›</button>
+</div>
+
+<script>
+const ITEMS = {json.dumps(items)};
+const CATS = {json.dumps(cats)};
+const CLUSTERS = {json.dumps(people_clusters)};
+
+let currentCategory = 'all';
+let currentFilter = 'all'; // all | photo | video
+let selectedPersonId = null;
+let searchQuery = '';
+let visibleItems = [];
+let currentLbIndex = 0;
+let deletedIds = new Set(JSON.parse(localStorage.getItem('album_deleted_ids') || '[]'));
+
 function init() {{
   buildSidebar();
+  renderFacesRow();
   renderGrid();
 }}
 
@@ -166,6 +327,7 @@ function selectCategory(catKey) {{
   currentCategory = catKey;
   selectedPersonId = null;
   buildSidebar();
+  renderFacesRow();
 
   const cat = CATS.find(c => c.key === catKey);
   document.getElementById('currentTitle').innerHTML = cat 
@@ -174,8 +336,37 @@ function selectCategory(catKey) {{
   renderGrid();
 }}
 
+function renderFacesRow() {{
+  const container = document.getElementById('facesContainer');
+  const row = document.getElementById('facesRow');
+  row.innerHTML = '';
+
+  // Show faces row only when in 'people' or 'all' with clusters available
+  if ((currentCategory === 'people' || currentCategory === 'all') && CLUSTERS.length > 0) {{
+    container.classList.add('visible');
+
+    // Filter to top recurring people (with at least 5 photos) to keep the carousel clean and relevant
+    const topClusters = CLUSTERS.filter(c => c.count >= 5);
+
+    topClusters.forEach(c => {{
+      const card = document.createElement('div');
+      card.className = 'face-card' + (selectedPersonId === c.id ? ' active' : '');
+      card.onclick = () => filterByPerson(c.id);
+      card.innerHTML = `
+        <img class="face-avatar" src="${{c.avatar}}" alt="${{c.name}}">
+        <span class="face-name">${{c.name}}</span>
+        <span class="face-count">${{c.count}} photos</span>
+      `;
+      row.appendChild(card);
+    }});
+  }} else {{
+    container.classList.remove('visible');
+  }}
+}}
+
 function filterByPerson(personId) {{
   selectedPersonId = (selectedPersonId === personId) ? null : personId;
+  renderFacesRow();
   const person = CLUSTERS.find(c => c.id === selectedPersonId);
   if (person) {{
     document.getElementById('currentTitle').innerHTML = `<span>👤</span> ${{person.name}} (${{person.count}} photos)`;
@@ -186,6 +377,12 @@ function filterByPerson(personId) {{
       : `<span>🌟</span> All Media`;
   }}
   renderGrid();
+}}
+
+function clearPersonFilter() {{
+  selectedPersonId = null;
+  renderFacesRow();
+  selectCategory(currentCategory);
 }}
 
 function setFilter(type) {{
