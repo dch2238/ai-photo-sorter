@@ -3,7 +3,7 @@
 An open-source, privacy-first desktop application that scans, deduplicates, categorizes, and organizes large camera rolls and video archives directly on your machine.
 
 - **100% On-Device & Private**: Your original media files are never altered, moved, or deleted from their source location.
-- **Multimodal AI Categorization**: Fast batch classification with Gemini Vision API (or local heuristics) into intuitive albums: *People & Family, Travel, Food & Drinks, Everyday Clips, Documents, Selfies, and more*.
+- **Multimodal AI Categorization**: Fast batch classification powered by multimodal LLMs (or local heuristics) into intuitive albums: *People & Family, Travel, Food & Drinks, Everyday Clips, Documents, Selfies, and more*.
 - **Industry-Grade Face Recognition & Clustering**: High-precision, on-device facial detection and multi-stage profile clustering (YuNet + SFace 128-dim embeddings). Groups recurring people, family members, and friends without duplicate profiles or cloud uploads.
 - **Dedicated Person Galleries & Explorer**: Filter by person across your library. View all photos of an individual with quick-trash deletion.
 - **Duplicate Detection**: Identifies byte-identical files, re-saved screenshots, and rapid burst shots into a dedicated review folder.
@@ -36,19 +36,26 @@ Or double-click `Open Photo Sorter.command` on macOS. The dashboard opens automa
 
 ## Features
 
+### 🤖 Multimodal AI Categorization (Any LLM API Key)
+Bring your own LLM provider. Simply add your API key to a `.env` file in the project root:
+
+```bash
+# Add your preferred LLM API key (e.g. Gemini, OpenAI, Claude/Anthropic)
+GEMINI_API_KEY="your-api-key-here"
+# or
+OPENAI_API_KEY="your-api-key-here"
+# or
+ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+The sorter automatically detects your available LLM key and uses high-speed batch classification to categorize photos and videos with deep semantic understanding. If you prefer running without an API key, local vision heuristics or Claude CLI plan integration are supported.
+
 ### 👤 Face Recognition & People Explorer
 - **On-Device Neural Vision**: Employs OpenCV YuNet for face detection and SFace for 128-dimensional biometric embeddings.
 - **Multi-Stage Profile Unification**: Eliminates fragmented duplicates of the same person across varied lighting, angles, expressions, and hairstyles.
 - **Header Explorer ("People & Faces")**: Browse all detected individuals with sharp portrait avatars and photo counts.
 - **Person Popup**: Clicking any person opens a dedicated photo gallery with instant 1-click delete to macOS Trash.
 - **Folder Face Bar**: When viewing "People & family", an avatar strip lets you filter instantly by individual.
-
-### 🤖 Multimodal AI Categorization
-Add your Gemini API key to `.env` in the project root:
-```bash
-GEMINI_API_KEY="your-api-key-here"
-```
-The sorter will use Gemini Vision batch classification to categorize photos and videos with high semantic accuracy.
 
 ### 🗑️ Instant System Trash
 - Click `🗑️` on any thumbnail or press `Delete`/`Backspace` in the full-screen lightbox.
