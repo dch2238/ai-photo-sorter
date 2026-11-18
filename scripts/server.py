@@ -278,7 +278,44 @@ class H(SimpleHTTPRequestHandler):
             return self.send_json(state())
         if u.path == "/api/labels":
             return self.send_json(live_labels())
+        if u.path == "/api/faces":
+            src = load(os.path.join(DATA, "source.json"), {})
+            candidate_dirs = [
+                "/Volumes/Extreme Pro/nov bk (sorted)",
+                "/Volumes/Extreme Pro/nov bk sorted"
+            ]
+            if src.get("sorted"):
+                candidate_dirs.insert(0, src["sorted"])
+            for d in candidate_dirs:
+                cfile = os.path.join(d, ".thumbnails", "people_clusters.json")
+                if os.path.exists(cfile):
+                    return self.send_json(load(cfile, []))
+            return self.send_json([])
         m = re.match(r"^/api/file/(\d+)$", u.path)
+        if m:
+            return self.send_original(int(m.group(1)))
+        m_face = re.match(r"^/api/face/(.+)$", u.path)
+        if m_face:
+            src = load(os.path.join(DATA, "source.json"), {})
+            candidate_dirs = [
+                "/Volumes/Extreme Pro/nov bk (sorted)",
+                "/Volumes/Extreme Pro/nov bk sorted"
+            ]
+            if src.get("sorted"):
+                candidate_dirs.insert(0, src["sorted"])
+            fname = os.path.basename(m_face.group(1))
+            for d in candidate_dirs:
+                face_img = os.path.join(d, ".thumbnails", "faces", fname)
+                if os.path.exists(face_img):
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(os.path.getsize(face_img)))
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.end_headers()
+                    with open(face_img, "rb") as f:
+                        return self.wfile.write(f.read())
+            self.send_response(404)
+            return self.end_headers()
         if m:
             return self.send_original(int(m.group(1)))
         return super().do_GET()

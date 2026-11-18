@@ -626,22 +626,83 @@ function openFolders() {
         el("button", { class: "mx-btn solid", onclick: saveIt }, "Save folders")))));
 }
 
+let peopleClusters = null;
+async function loadFaces() {
+  if (peopleClusters) return peopleClusters;
+  try {
+    peopleClusters = await fetch("/api/faces", { cache: "no-store" }).then(r => r.json());
+  } catch (e) {
+    peopleClusters = [];
+  }
+  return peopleClusters || [];
+}
 
+async function openFolder(c) {
+  let all = items.filter(i => c.key === "_dupes" ? i.dupe : !i.dupe && i.cat === c.key);
+  let activePersonId = null;
 
-function openFolder(c) {
-  const all = items.filter(i => c.key === "_dupes" ? i.dupe : !i.dupe && i.cat === c.key);
+  const faces = await loadFaces();
+  const facesStrip = el("div", { class: "faces-strip", style: "display:flex;gap:12px;overflow-x:auto;padding:12px 16px;background:rgba(0,0,0,0.25);border-bottom:1px solid var(--border);" });
+
+  function renderFaces() {
+    facesStrip.replaceChildren();
+    // Only show face recognition avatars inside the "People & family" folder
+    if (faces.length === 0 || c.key !== "people") {
+      facesStrip.style.display = "none";
+      return;
+    }
+    facesStrip.style.display = "flex";
+    
+    // All face button
+    const allBtn = el("div", {
+      class: "face-chip" + (!activePersonId ? " active" : ""),
+      style: `display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;flex-shrink:0;padding:4px 8px;border-radius:8px;${!activePersonId ? 'background:rgba(255,255,255,0.1);font-weight:600;' : ''}`,
+      onclick: () => { activePersonId = null; render(); renderFaces(); }
+    },
+      el("div", { style: "width:48px;height:48px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;" }, "👥"),
+      el("span", { style: "font-size:0.75rem;" }, "Everyone")
+    );
+    facesStrip.append(allBtn);
+
+    faces.filter(p => p.count >= 4).forEach(person => {
+      const isSelected = activePersonId === person.id;
+      const chip = el("div", {
+        class: "face-chip" + (isSelected ? " active" : ""),
+        style: `display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;flex-shrink:0;padding:4px 8px;border-radius:8px;${isSelected ? 'background:rgba(88,166,255,0.2);font-weight:600;outline:1px solid #58a6ff;' : ''}`,
+        onclick: () => { activePersonId = isSelected ? null : person.id; render(); renderFaces(); }
+      },
+        el("img", {
+          src: `/api/face/${person.avatar.split('/').pop()}`,
+          style: "width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid " + (isSelected ? "#58a6ff" : "var(--border)")
+        }),
+        el("span", { style: "font-size:0.75rem;max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, person.name),
+        el("small", { style: "font-size:0.65rem;color:var(--sub);" }, `${person.count}`)
+      );
+      facesStrip.append(chip);
+    });
+  }
+
   const grid = el("div", { class: "browse" });
   let shown = 0;
 
   function render() {
     shown = 0;
     grid.replaceChildren();
+    
+    let currentItems = all;
+    if (activePersonId) {
+      const p = faces.find(f => f.id === activePersonId);
+      if (p) {
+        const idSet = new Set(p.item_ids);
+        currentItems = all.filter(it => idSet.has(it.id));
+      }
+    }
 
     const more = () => {
       grid.querySelector(".more")?.remove();
       const from = shown;
-      all.slice(from, from + 120).forEach((it, k) => {
-        const thumb = el("button", { onclick: () => lightbox(all, from + k), "aria-label": it.name, style: "position:relative;" },
+      currentItems.slice(from, from + 120).forEach((it, k) => {
+        const thumb = el("button", { onclick: () => lightbox(currentItems, from + k), "aria-label": it.name, style: "position:relative;" },
           el("img", { src: it.src, alt: "", loading: "lazy" }),
           it.kind === "video" ? el("span", { class: "vid" }, "▶ " + (it.duration ? Math.round(it.duration) + "s" : "video")) : null,
           el("button", {
@@ -667,12 +728,13 @@ function openFolder(c) {
         grid.append(thumb);
       });
       shown += 120;
-      if (shown < all.length) grid.append(el("button", { class: "mx-btn more", onclick: more }, `Show ${fmt(Math.min(120, all.length - shown))} more`));
+      if (shown < currentItems.length) grid.append(el("button", { class: "mx-btn more", onclick: more }, `Show ${fmt(Math.min(120, currentItems.length - shown))} more`));
       paintIcons(grid);
     };
     more();
   }
 
+  renderFaces();
   render();
 
   overlay(el("div", { class: "fb-scrim", onclick: e => e.target === e.currentTarget && closeAll() },
@@ -681,6 +743,7 @@ function openFolder(c) {
         el("div", { class: "acts" },
           S.sorted && !DEMO ? el("button", { class: "mx-btn small", onclick: () => api("/api/open", { folder: c.key === "_dupes" ? "_Review/duplicates" : c.label.replace(/&/g, "and").replace(/\//g, "-") }) }, icon("folder"), "Open in Finder") : null,
           el("button", { class: "mx-icon", onclick: closeAll, "aria-label": "Close" }, icon("x")))),
+      c.key === "people" ? facesStrip : null,
       all.length ? grid : el("p", { class: "mx-empty", style: "padding:22px" }, "Nothing in this folder yet."))));
   paintIcons();
 }
@@ -784,9 +847,124 @@ async function init() {
   }
   if (params.has("auto") && mode === "done") setTimeout(replay, 1200);
 }
+function openPersonModal(person, faces) {
+  let pItems = items.filter(it => person.item_ids.includes(it.id));
+  const grid = el("div", { class: "browse" });
+  let shown = 0;
+
+  function renderPersonItems() {
+    shown = 0;
+    grid.replaceChildren();
+
+    const more = () => {
+      grid.querySelector(".more")?.remove();
+      const from = shown;
+      pItems.slice(from, from + 120).forEach((it, k) => {
+        const thumb = el("button", { onclick: () => lightbox(pItems, from + k), "aria-label": it.name, style: "position:relative;" },
+          el("img", { src: it.src, alt: "", loading: "lazy" }),
+          it.kind === "video" ? el("span", { class: "vid" }, "▶ " + (it.duration ? Math.round(it.duration) + "s" : "video")) : null,
+          el("button", {
+            class: "quick-del",
+            title: "Move to Trash",
+            style: "position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.7);border:none;color:#f85149;display:flex;align-items:center;justify-content:center;cursor:pointer;",
+            onclick: async e => {
+              e.stopPropagation();
+              if (!confirm(`Move ${it.name} to Mac Trash?`)) return;
+              try {
+                await api("/api/delete", { id: it.id, delete_original: false });
+                toast(`🗑️ Moved ${it.name} to Mac Trash.`);
+                const iIdx = items.indexOf(it);
+                if (iIdx !== -1) items.splice(iIdx, 1);
+                const pIdx = pItems.indexOf(it);
+                if (pIdx !== -1) pItems.splice(pIdx, 1);
+                renderPersonItems();
+                document.getElementById(`person-count-title`).textContent = fmt(pItems.length);
+              } catch (err) {
+                toast(err.message);
+              }
+            }
+          }, icon("trash"))
+        );
+        grid.append(thumb);
+      });
+      shown += 120;
+      if (shown < pItems.length) grid.append(el("button", { class: "mx-btn more", onclick: more }, `Show ${fmt(Math.min(120, pItems.length - shown))} more`));
+      paintIcons(grid);
+    };
+    more();
+  }
+
+  renderPersonItems();
+
+  const dialog = el("div", { class: "fb-dialog wide", role: "dialog", "aria-label": person.name },
+    el("div", { class: "fb-head" },
+      el("div", { style: "display:flex;align-items:center;gap:12px;" },
+        el("img", {
+          src: `/api/face/${person.avatar.split('/').pop()}`,
+          style: "width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--border);"
+        }),
+        el("h2", {}, person.name, el("span", { class: "mx-count", id: "person-count-title" }, fmt(pItems.length)))
+      ),
+      el("div", { class: "acts" },
+        el("button", { class: "mx-btn small", onclick: () => { dialog.remove(); openFacesModal(); } }, icon("left"), "All People"),
+        el("button", { class: "mx-icon", onclick: closeAll, "aria-label": "Close" }, icon("x"))
+      )
+    ),
+    pItems.length ? grid : el("p", { class: "mx-empty", style: "padding:22px" }, "No photos remaining for this person.")
+  );
+
+  overlay(el("div", { class: "fb-scrim", onclick: e => e.target === e.currentTarget && closeAll() }, dialog));
+  paintIcons();
+}
+
+function openFacesModal() {
+  loadFaces().then(faces => {
+    if (!faces || faces.length === 0) {
+      toast("No faces detected yet. Faces are detected for 'People & family' photos.");
+      return;
+    }
+
+    const faceList = el("div", { style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px;padding:20px;max-height:70vh;overflow-y:auto;" });
+
+    faces.forEach(person => {
+      const pCount = items.filter(it => person.item_ids.includes(it.id)).length;
+      const card = el("div", {
+        style: "display:flex;flex-direction:column;align-items:center;padding:16px 10px;border-radius:12px;cursor:pointer;border:1px solid var(--border);background:var(--surface);transition:all 0.15s;text-align:center;",
+        onmouseover: e => card.style.borderColor = "var(--accent)",
+        onmouseout: e => card.style.borderColor = "var(--border)",
+        onclick: () => {
+          closeAll();
+          openPersonModal(person, faces);
+        }
+      },
+        el("img", {
+          src: `/api/face/${person.avatar.split('/').pop()}`,
+          style: "width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:10px;border:2px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,0.3);"
+        }),
+        el("b", { style: "font-size:13.5px;color:var(--ink);margin-bottom:2px;" }, person.name),
+        el("span", { style: "font-size:11.5px;color:var(--faint);" }, `${pCount} photos`)
+      );
+      faceList.append(card);
+    });
+
+    const dialog = el("div", { class: "fb-dialog wide", role: "dialog", "aria-label": "People & Faces" },
+      el("div", { class: "fb-head" },
+        el("h2", {}, "People & Faces", el("span", { class: "mx-count" }, fmt(faces.length))),
+        el("div", { class: "acts" },
+          el("button", { class: "mx-icon", onclick: closeAll, "aria-label": "Close" }, icon("x"))
+        )
+      ),
+      el("div", { class: "fb-rows", style: "padding:0;" }, faceList)
+    );
+
+    overlay(el("div", { class: "fb-scrim", onclick: e => e.target === e.currentTarget && closeAll() }, dialog));
+    paintIcons();
+  });
+}
 
 $("go").onclick = sortWithClaude;
 $("btnNew").onclick = newSort;
+$("btnFaces").onclick = openFacesModal;
 $("btnFolders").onclick = openFolders;
 $("btnOpen").onclick = () => api("/api/open", {}).catch(() => {});
 addEventListener("keydown", e => {
