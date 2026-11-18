@@ -1,0 +1,20 @@
+# Private user data, caches, and local work directories
+dashboard/data/
+dashboard/demo/
+dashboard/peek/
+work/
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+
+# Ignore local sorted exports and test builds
+* (sorted)/
+.thumbnails/
+clean.command
+
+# Ignore large binary ONNX model weights in git
+models/*.onnx
+!models/download_models.py
